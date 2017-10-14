@@ -43,7 +43,7 @@ public:
     bool Remove(type1 key); //удаление пары по ключу
     void hash_evolution(); //перехеширование
     int get_size(){return size;} //возвращает размер таблицы
-    int qet_quantity(){return quantity;} //возвращает количество пар ключ-значение в таблице
+    int get_quantity(){return quantity;} //возвращает количество пар ключ-значение в таблице
 };
 
 template<typename type1, typename type2> hashtable<type1, type2>::hashtable(double L_FACTOR, int SIZE){
