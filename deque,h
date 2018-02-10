@@ -172,6 +172,7 @@ bool deque<T, CAPACITYBLOCK>::pushBack(const T value) noexcept{
     lastDequeBlock_->dataBlock_[lastDequeBlock_->getSize()] = value;
     lastDequeBlock_->incrementSize();
     ++elementsInDeque_;
+    return true;
 }
 
 template<typename T, size_t CAPACITYBLOCK>
@@ -182,6 +183,7 @@ bool deque<T, CAPACITYBLOCK>::pushFront(const T value) noexcept{
     firstDequeBlock_->dataBlock_[CAPACITYBLOCK - firstDequeBlock_->getSize() - 1] = value;
     firstDequeBlock_->incrementSize();
     ++elementsInDeque_;
+    return true;
 }
 
 template<typename T, size_t CAPACITYBLOCK>
