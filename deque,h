@@ -1,0 +1,226 @@
+#include <iostream>
+#include <cstdint>
+#include <exception>
+#include <memory>
+#include <future>
+#include <chrono>
+#include <cmath>
+
+using std::unique_ptr;
+using std::shared_ptr;
+using std::make_shared;
+using std::out_of_range;
+using std::launch;
+
+namespace {
+template<class T, size_t CAPACITYBLOCK>
+struct dequeBlock{
+    using pointerToBlock      =  shared_ptr<dequeBlock<T, CAPACITYBLOCK>>;
+    using pointerToDataBlock  =  unique_ptr<T[]>;
+    dequeBlock () = delete;
+    ~dequeBlock() = default;
+    dequeBlock (bool indround) : size_(0){
+        pointerToDataBlock pT(new T[CAPACITYBLOCK]);
+        dataBlock_ = move(pT);
+        unsigned char* pS = reinterpret_cast<unsigned char*>(&size_);
+        pS[sizeof(size_) - 1] |= indround ? 128 : 0;
+    }
+    size_t getSize() const noexcept{
+        size_t tempSize = size_ << 1;
+        return (tempSize >> 1);
+    }
+    void incrementSize() noexcept{ ++size_;}
+    void decrementSize() noexcept{ --size_;}
+    bool isRightRound() const noexcept{
+        unsigned char* pS = reinterpret_cast<unsigned char*>(&size_);
+        return (pS[sizeof(size_) - 1] & 128) ? true : false;
+    }
+
+    pointerToBlock      pointerToDownNode_;
+    pointerToBlock      pointerToUpNode_;
+    pointerToDataBlock  dataBlock_;
+    size_t              size_;
+};
+}
+
+template<typename T, size_t CAPACITYBLOCK>
+class deque{
+public:
+    using const_value_type = const T;
+    using value_type       = T;
+    using lreference       = T&;
+    using const_reference  = const T&;
+    using pointer          = T*;
+    using blockType        = dequeBlock<value_type, CAPACITYBLOCK>;
+    using pointerToBlock   = shared_ptr<blockType>;
+private:
+    size_t          elementsInDeque_;
+    unsigned int    dequeBlockOnLeft_;
+    unsigned int    dequeBlockOnRight_;
+    pointerToBlock  averageBlock_;
+    pointerToBlock  firstDequeBlock_;
+    pointerToBlock  lastDequeBlock_;
+private:
+    void       optimization      (bool ind)       noexcept;
+    void       balancing         ()               noexcept;
+    bool       createDequeBlock  (bool ind)       noexcept;
+    bool       initialyze        ();
+    lreference operator[]        (size_t index)   noexcept;
+public:
+    deque(){initialyze();}
+    ~deque(){}
+    bool       pushBack  (const_value_type value) noexcept;
+    bool       pushFront (const_value_type value) noexcept;
+    void       popBack   ()                       noexcept;
+    void       popFront  ()                       noexcept;
+    void       clear     ();
+    bool       isEmpty   ()             const     noexcept;
+    lreference at        (size_t index)           noexcept;
+};
+
+template<typename T, size_t CAPACITYBLOCK>
+bool deque<T, CAPACITYBLOCK>::initialyze(){
+    elementsInDeque_ = 0;
+    dequeBlockOnLeft_ = 0;
+    dequeBlockOnRight_ = 0;
+    averageBlock_ = make_shared<blockType>(true);
+    firstDequeBlock_ = averageBlock_;
+    lastDequeBlock_ = averageBlock_;
+}
+
+template<typename T, size_t CAPACITYBLOCK>
+bool deque<T, CAPACITYBLOCK>::isEmpty() const noexcept{
+    return (firstDequeBlock_->getSize() == 0) ? true : false;
+}
+
+template<typename T, size_t CAPACITYBLOCK>
+T& deque<T, CAPACITYBLOCK>::at(size_t index) noexcept{
+    if(static_cast<int>(elementsInDeque_ - index) < 1) throw out_of_range("It is out of range!");
+    return operator [](index);
+}
+
+template<typename T, size_t CAPACITYBLOCK>
+T& deque<T, CAPACITYBLOCK>::operator [](size_t index) noexcept{
+    auto pS = firstDequeBlock_;
+    while(static_cast<int>(pS->getSize() - index) < 1){
+        index -= pS->getSize();
+        pS = pS->pointerToDownNode_;
+    }
+    return (pS->isRightRound()) ? pS->dataBlock_[index] : pS->dataBlock_[CAPACITYBLOCK - pS->getSize() + index];
+}
+
+template<typename T, size_t CAPACITYBLOCK>
+bool deque<T, CAPACITYBLOCK>::createDequeBlock(bool ind) noexcept{
+    pointerToBlock pD = make_shared<blockType>(ind);
+    if(ind){
+        lastDequeBlock_->pointerToDownNode_ = pD;
+        pD->pointerToUpNode_ = lastDequeBlock_;
+        lastDequeBlock_ = pD;
+        ++dequeBlockOnRight_;
+    }
+    else{
+        firstDequeBlock_->pointerToUpNode_ = pD;
+        pD->pointerToDownNode_ = firstDequeBlock_;
+        firstDequeBlock_ = pD;
+        ++dequeBlockOnLeft_;
+    }
+    balancing();
+}
+
+template<typename T, size_t CAPACITYBLOCK>
+void deque<T, CAPACITYBLOCK>::balancing() noexcept{
+    int difference = dequeBlockOnLeft_ - dequeBlockOnRight_;
+    if(difference >= 2){
+        averageBlock_ = averageBlock_->pointerToUpNode_;
+        --dequeBlockOnLeft_;
+        ++dequeBlockOnRight_;
+    }
+    if(difference <= -2){
+        averageBlock_ = averageBlock_->pointerToDownNode_;
+        --dequeBlockOnRight_;
+        ++dequeBlockOnLeft_;
+    }
+}
+
+
+template<typename T, size_t CAPACITYBLOCK>
+void deque<T, CAPACITYBLOCK>::optimization(bool ind) noexcept{
+    if(ind){
+        if(lastDequeBlock_->getSize() == 0){
+            pointerToBlock ptemp = lastDequeBlock_->pointerToUpNode_;
+            lastDequeBlock_->~dequeBlock();
+            lastDequeBlock_ = ptemp;
+            --dequeBlockOnRight_;
+        }
+    }
+    else{
+        if(firstDequeBlock_->getSize() == 0){
+            pointerToBlock ptemp = firstDequeBlock_->pointerToDownNode_;
+            firstDequeBlock_->~dequeBlock();
+            firstDequeBlock_ = ptemp;
+            --dequeBlockOnLeft_;
+        }
+    }
+    balancing();
+}
+
+template<typename T, size_t CAPACITYBLOCK>
+bool deque<T, CAPACITYBLOCK>::pushBack(const T value) noexcept{
+    if(lastDequeBlock_->getSize() == CAPACITYBLOCK)
+        if(!createDequeBlock(true))
+            return false;
+    lastDequeBlock_->dataBlock_[lastDequeBlock_->getSize()] = value;
+    lastDequeBlock_->incrementSize();
+    ++elementsInDeque_;
+}
+
+template<typename T, size_t CAPACITYBLOCK>
+bool deque<T, CAPACITYBLOCK>::pushFront(const T value) noexcept{
+    if((firstDequeBlock_ == lastDequeBlock_) || (firstDequeBlock_->getSize() == CAPACITYBLOCK))
+        if(!createDequeBlock(false))
+            return false;
+    firstDequeBlock_->dataBlock_[CAPACITYBLOCK - firstDequeBlock_->getSize() - 1] = value;
+    firstDequeBlock_->incrementSize();
+    ++elementsInDeque_;
+}
+
+template<typename T, size_t CAPACITYBLOCK>
+void deque<T, CAPACITYBLOCK>::popFront() noexcept{
+    firstDequeBlock_->decrementSize();
+    optimization(false);
+    --elementsInDeque_;
+}
+
+template<typename T, size_t CAPACITYBLOCK>
+void deque<T, CAPACITYBLOCK>::popBack() noexcept{
+    lastDequeBlock_->incrementSize();
+    optimization(true);
+    --elementsInDeque_;
+}
+
+template<typename T, size_t CAPACITYBLOCK>
+void deque<T, CAPACITYBLOCK>::clear() {
+   auto lambda = [](pointerToBlock first, pointerToBlock second) noexcept{
+        pointerToBlock pTemp;
+        while(first != second){
+            pTemp = first->pointerToDownNode_;
+            first->~dequeBlock();
+            first = pTemp;
+        }
+    };
+    auto future1 = async(launch::async, lambda, firstDequeBlock_, averageBlock_->pointerToUpNode_);
+    auto future2 = async(launch::async, lambda, averageBlock_, nullptr);
+    future1.wait();
+    future2.wait();
+    initialyze();
+}
+
+int main(){
+    deque<int,10> a;
+    a.pushBack(10);
+    a.pushFront(100);
+    a.popBack();
+    a.popFront();
+    a.isEmpty();
+    a.clear();
+}
