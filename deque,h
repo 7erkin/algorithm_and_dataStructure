@@ -214,13 +214,3 @@ void deque<T, CAPACITYBLOCK>::clear() {
     future2.wait();
     initialyze();
 }
-
-int main(){
-    deque<int,10> a;
-    a.pushBack(10);
-    a.pushFront(100);
-    a.popBack();
-    a.popFront();
-    a.isEmpty();
-    a.clear();
-}
